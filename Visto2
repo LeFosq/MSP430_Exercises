@@ -1,0 +1,120 @@
+#include <msp430.h>
+#define PMAX 14600
+#define PMIN 13950
+#define ZMIN 1100
+#define ZMAX 1300
+#define UMAX 2400
+#define UMIN 2200
+#define T_PWM 10480 // 10 ms para o SMCLOCK (1 MHz +-)
+#define SOBE_10 1048 // Usaremos isso para subir em 10% a potência (usanod pwm)
+void config_io(void);
+
+/**
+ * main.c
+ */
+int main(void)
+{
+    volatile unsigned long cod = 0;
+    volatile unsigned x = 0;
+    WDTCTL = WDTPW|WDTHOLD;
+    unsigned int vet[32];
+    unsigned int cap, i;
+    config_io();
+    while(1)
+    {
+        TA1CCTL1 = CM_2 | SCS |CAP;
+        while((TA1CCTL1&CCIFG) == 0);
+        TA1CTL |= TACLR;
+        TA1CCTL1 &= ~CCIFG;
+        while((TA1CCTL1&CCIFG) == 0);
+        cap = TA1CCR1;
+        TA1CCTL1 &= ~CCIFG;
+        if((cap < PMAX) & (cap > PMIN))
+        {
+            TA1CCTL1 = CM_1 | SCS | CAP;
+            while((TA1CCTL1&CCIFG) == 0);
+            TA1CCTL1 &= ~CCIFG;
+            TA1CTL |= TACLR;
+            for(i = 0 ; i < 32 ; i++)
+            {
+                while((TA1CCTL1&CCIFG) == 0);
+                TA1CCTL1 &= ~CCIFG;
+                TA1CTL |= TACLR;
+                vet[i] = TA1CCR1;
+            }
+
+        }
+        for (i = 0; i < 32 ; i++)
+        {
+            if((vet[i] < UMAX) & (vet[i] > UMIN))
+            {
+                vet[i] = 1;
+            }
+            if((vet[i] < ZMAX) & (vet[i] > ZMIN))
+            {
+                vet[i] = 0;
+            }
+        }
+        for (i = 0; i < 32 ;i++)
+            {
+            cod = cod>>1;
+                if (vet[i] == 1)
+                {
+                    cod |= 0x80000000L;
+                }
+            }
+        x = cod >> 24;
+        switch(x)
+        {
+        case 161: TA1CCR1 = 3*SOBE_10; break; //A1
+        case 165: TA1CCR1 = 6*SOBE_10; break; //A5
+        case 173: TA1CCR1 = 8*SOBE_10; break; //AD
+        case 181: TA1CCR1 = 9*SOBE_10; break; //B5
+        case 184: P1OUT ^= BIT0; break; //B8
+        case 185: P1OUT &= ~BIT0; break; //B9
+        case 186: P1OUT |= BIT0; break; // BA
+        case 187: TA1CCR1 = 10*SOBE_10 ; break; // BB
+        case 188: if(TA1CCR1 > 5*SOBE_10){TA1CCR1 - 5*SOBE_10;} if(TA1CCR1 <> 5*SOBE_10){TA1CCR1 + 5*SOBE_10;} break; // BC
+        case 189: TA1CCR1 = 7*SOBE_10; break; //BD
+        case 191: TA1CCR1 = 0*SOBE_10; break; // BF
+        case 227: TA1CCR1 = 5*SOBE_10; break; // E3
+        case 230: break; // E6
+        case 231: TA1CCR1 = 2*SOBE_10; break; // E7
+        case 233: TA1CCR1 = 0*SOBE_10; break; //E9
+        case 234: break; //EA
+        case 242: break; //F2
+        case 243: TA1CCR1 = 1*SOBE_10; break; //F3
+        case 246: break; //F6
+        case 247: TA1CCR1 = 4*SOBE_10; break; //F7
+        case 248: break; // F8
+
+
+        }
+      //while(1);
+    }
+
+    return 0;
+}
+void config_io(void)
+{
+    P2DIR &= ~BIT0;
+    P2SEL |= BIT0;
+    
+    P1DIR |= BIT2;
+    P1SEL |= BIT2;
+
+
+//Config Leds
+    P4DIR |= BIT7;
+    P4OUT &= ~BIT7;
+    P1DIR |= BIT0;
+    P1OUT &= ~BIT0;
+    //Config Timer
+    TA1CTL = TASSEL_2 | MC_2;
+    TA1CCTL1 = CM_2 | SCS |CAP;
+    // Config Timer PWM
+    TA0CTL = TASSEL_2 | MC_1;
+    TA0CCTL1 = OUTMOD_6;
+    TA0CCRT0 = T_PWM;
+    TA0CCR1 = 5*SOBE_10;
+}
